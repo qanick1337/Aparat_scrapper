@@ -3,6 +3,8 @@ import pandas as pd
 import time
 import os
 import re
+import ast
+import math
 
 
 # 1. Make the request to the Core API
@@ -60,14 +62,81 @@ def extract_district(locality_string):
     match = re.search(r'Praha(\s\d+)', str(locality_string))
     if match:
         return match.group(1)
-    return "Praha Unknown"
+    return 0
 
-# "{'lat': 50.10833, 'lon': 14.524261}"
 def extract_coords(gps_string, coord_type):
     match = re.search(rf'{coord_type}\':\s([\d\.]+)', str(gps_string))
     if match:
         return match.group(1)
     return f"Unknown {coord_type}"
+
+def extract_all_labels(labels_list):
+    all_labels_list = []
+
+    for elem in labels_list:
+        data_list = ast.literal_eval(elem)
+        all_labels_list.append(data_list)
+
+    unique_labels = []
+    seen = set()
+
+    for row in all_labels_list:
+        for sub_cat in row:
+            for label in sub_cat:
+                if label not in seen:
+                    unique_labels.append(label)
+                    seen.add(label)
+
+    return  unique_labels
+
+def calculate_haversine(lat_a:float, lon_a:float, lat_b:float, lon_b:float):
+    R = 6371.0
+    # Convert degrees to radians
+    lat_a_rad, lon_a_rad = math.radians(lat_a), math.radians(lon_a)
+    lat_b_rad, lon_b_rad = math.radians(lat_b), math.radians(lon_b)
+
+    # Differences
+    delta_lat = lat_b_rad - lat_a_rad
+    delta_lon = lon_b_rad - lon_a_rad
+
+    # Haversine formula
+    a = math.sin(delta_lat / 2) ** 2 + math.cos(lat_a_rad) * math.cos(lat_b_rad) * math.sin(delta_lon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
+
+def get_distance_to_local_center(gps_lat, gps_lon):
+    prague_hubs = {
+        "Mustek": (50.0844, 14.4236),
+        "Namesti_Miru": (50.0753, 14.4370),
+        "Pankrac": (50.0511, 14.4394),
+        "Andel": (50.0724, 14.4020),
+        "Dejvicka": (50.1005, 14.3956),
+        "Karlin": (50.0910, 14.4480),
+        "Holesovice": (50.1030, 14.4320),
+        "Chodov": (50.0320, 14.4910),
+        "Stodulky": (50.0460, 14.3070),
+        "Letnany": (50.1230, 14.4980)
+    }
+
+    distances_to_hubs = {
+        "Mustek": 0,
+        "Namesti_Miru": 0,
+        "Pankrac": 0,
+        "Andel": 0,
+        "Dejvicka": 0,
+        "Karlin": 0,
+        "Holesovice": 0,
+        "Chodov": 0,
+        "Stodulky": 0,
+        "Letnany": 0
+    }
+
+    for hub in prague_hubs:
+        (hub_lat, hub_lon) = prague_hubs[hub]
+        distances_to_hubs[hub] = calculate_haversine(hub_lat,hub_lon,gps_lat,gps_lon)
+
+    return min(distances_to_hubs.values())
 
 
 
@@ -79,22 +148,37 @@ else:
 
 apartments_list['area_m2'] = apartments_list['name'].apply(extract_area)
 apartments_list['district'] = apartments_list['locality'].apply(extract_district)
+
 apartments_list['lat'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lat'))
 apartments_list['lon'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lon'))
-# apartments_list['is_new_building'] =
 
 params = ['area_m2', 'district']
 
+all_labels_list = extract_all_labels(apartments_list["labelsAll"])
+
+print(all_labels_list)
+
+critical_labels = ['furnished', 'partly_furnished', 'not_furnished', 'metro', 'tram', 'new_building', 'after_reconstruction', 'brick', 'panel', 'elevator', 'cellar', 'garage', 'parking_lots']
 
 
-apartments_list_sample = apartments_list[0:6]
+for label in critical_labels:
+    apartments_list[label] = apartments_list['labelsAll'].apply(lambda x, lbl=label: 1 if lbl in str(x) else 0)
+    params.append(label)
 
+apartments_list['distance_to_local_hub'] = apartments_list.apply(lambda x: get_distance_to_local_center(float(x['lat']), float(x['lon'])), axis=1)
 
-for apartment in apartments_list_sample.itertuples(index=False):
-    print(f"{apartment.name} | {apartment.price} CZK | {apartment.district} | {apartment.hash_id} | {apartment.area_m2}")
-    print(f"{apartment.lat} lattidute and  {apartment.lon} lontidute ")
+apartments_list = apartments_list.loc[apartments_list['price'] > 1]
+
+params.append('distance_to_local_hub')
+params.append('price')
+
+ready_to_use = apartments_list[params].iloc[0:500].to_csv('clear_data.csv', index=False)
+
+# for apartment in apartments_list_sample.itertuples(index=False):
+#     print(f"{apartment.name} | {apartment.price} CZK | {apartment.district} | {apartment.hash_id} | {apartment.area_m2}")
+#     print(f"{apartment.lat} lattidute and  {apartment.lon} lontidute ")
 
 # print(f"How much nulls {apartments_list[params].isnull().sum()}")
-print(f"Digga was duplicates ? {apartments_list.duplicated().sum()}")
+# print(f"Digga was duplicates ? {apartments_list.duplicated().sum()}")
 
 apartments_list[params] = apartments_list[params].fillna(apartments_list[params].mode())
