@@ -5,6 +5,10 @@ import os
 import re
 import ast
 import math
+import joblib
+
+from train_model import model_init
+from  testing_model import  testing_model
 
 
 # 1. Make the request to the Core API
@@ -26,7 +30,7 @@ def fetch_all_rentals():
             "category_type_cb": 2,  # Rent
             "category_sub_cb": 2,  # 1+kk
             "locality_region_id": 10,  # Prague
-            "per_page": 60,  # The maximum Sreality allows per request???
+            "per_page": 80,  # The maximum Sreality allows per request???
             "page": page  # The current page in the loop
         }
 
@@ -74,7 +78,10 @@ def extract_all_labels(labels_list):
     all_labels_list = []
 
     for elem in labels_list:
-        data_list = ast.literal_eval(elem)
+        if isinstance(elem, str):
+            data_list = ast.literal_eval(elem)
+        else:
+            data_list = elem
         all_labels_list.append(data_list)
 
     unique_labels = []
@@ -179,13 +186,10 @@ apartments_list = apartments_list.loc[apartments_list['price'] > 1]
 params.append('distance_to_local_hub')
 params.append('price')
 
-ready_to_use = apartments_list[params].iloc[0:500].to_csv('clear_data.csv', index=False)
+ready_to_use_for_train = apartments_list[params].iloc[0:500]
 
-# for apartment in apartments_list_sample.itertuples(index=False):
-#     print(f"{apartment.name} | {apartment.price} CZK | {apartment.district} | {apartment.hash_id} | {apartment.area_m2}")
-#     print(f"{apartment.lat} lattidute and  {apartment.lon} lontidute ")
+to_predict = apartments_list[params].iloc[501:]
 
-# print(f"How much nulls {apartments_list[params].isnull().sum()}")
-# print(f"Digga was duplicates ? {apartments_list.duplicated().sum()}")
+model_init(ready_to_use_for_train)
+testing_model(to_predict)
 
-apartments_list[params] = apartments_list[params].fillna(apartments_list[params].mode())

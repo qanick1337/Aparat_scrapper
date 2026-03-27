@@ -1,4 +1,5 @@
 appartments.csv
 .venv
 .idea
-clear_data.csv
+predicted_result.csv
+rf_sreality_model.pkl
