@@ -152,13 +152,20 @@ apartments_list['district'] = apartments_list['locality'].apply(extract_district
 apartments_list['lat'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lat'))
 apartments_list['lon'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lon'))
 
-params = ['area_m2', 'district']
+params = ['area_m2']
 
 all_labels_list = extract_all_labels(apartments_list["labelsAll"])
 
 print(all_labels_list)
 
 critical_labels = ['furnished', 'partly_furnished', 'not_furnished', 'metro', 'tram', 'new_building', 'after_reconstruction', 'brick', 'panel', 'elevator', 'cellar', 'garage', 'parking_lots']
+
+districts = range(1,11)
+
+for distr in districts:
+    column = "prague_" + str(distr)
+    apartments_list[column] = apartments_list['locality'].apply(lambda x, lbl=str(distr): 1 if lbl in str(x) else 0)
+    params.append(column)
 
 
 for label in critical_labels:
