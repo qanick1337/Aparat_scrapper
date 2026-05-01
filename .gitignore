@@ -1,5 +1,5 @@
-appartments.csv
+scrapper/appartments.csv
 .venv
 .idea
-predicted_result.csv
-rf_sreality_model.pkl
+scrapper/predicted_result.csv
+scrapper/rf_sreality_model.pkl

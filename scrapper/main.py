@@ -7,11 +7,24 @@ import ast
 import math
 import joblib
 
+import sys
+import django
+
+
+from price_prediction import run_ml_inference
 from train_model import model_init
 from  testing_model import  testing_model
 
 
-# 1. Make the request to the Core API
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.backend.settings')
+django.setup()
+
+from api.models import Apartment
+
+
+
+# Make the request to the Core API
 def fetch_all_rentals():
     url = "https://www.sreality.cz/api/cs/v2/estates"
     all_apartments = []
@@ -30,7 +43,7 @@ def fetch_all_rentals():
             "category_type_cb": 2,  # Rent
             "category_sub_cb": 2,  # 1+kk
             "locality_region_id": 10,  # Prague
-            "per_page": 80,  # The maximum Sreality allows per request???
+            "per_page": 80,
             "page": page  # The current page in the loop
         }
 
@@ -145,30 +158,87 @@ def get_distance_to_local_center(gps_lat, gps_lon):
 
     return min(distances_to_hubs.values())
 
+def get_seo_locality(seo):
+    if isinstance(seo, str):
+        try:
+            seo = ast.literal_eval(seo)
+        except (ValueError, SyntaxError):
+            return None
+    if isinstance(seo, dict):
+        return seo.get('locality')
+    return None
 
 
-if os. path.isfile('appartments.csv'):
-    apartments_list = pd.read_csv('appartments.csv')
-else:
-    apartments_list = fetch_all_rentals()
-    res = apartments_list.copy().to_csv('appartments.csv', index=False)
+def sync_apartments_to_db(df):
+    print("Starting the synchronization with the DB")
+    current_active_ids = []
 
+    for index, row in df.iterrows():
+        sreality_id = str(row['hash_id'])
+        current_active_ids.append(sreality_id)
+
+        defaults = {
+            'price': row['price'],
+            'area_m2': row['area_m2'],
+            'district': row['district'],
+            'seo_locality': row['seo_locality'],
+            'distance_to_local_hub': row['distance_to_local_hub'],
+            'furnished': bool(row.get('furnished', 0)),
+            'partly_furnished': bool(row.get('partly_furnished', 0)),
+            'not_furnished': bool(row.get('not_furnished', 0)),
+            'metro': bool(row.get('metro', 0)),
+            'tram': bool(row.get('tram', 0)),
+            'new_building': bool(row.get('new_building', 0)),
+            'after_reconstruction': bool(row.get('after_reconstruction', 0)),
+            'brick': bool(row.get('brick', 0)),
+            'panel': bool(row.get('panel', 0)),
+            'elevator': bool(row.get('elevator', 0)),
+            'cellar': bool(row.get('cellar', 0)),
+            'garage': bool(row.get('garage', 0)),
+            'parking_lots': bool(row.get('parking_lots', 0)),
+            'is_active': True
+        }
+
+        Apartment.objects.update_or_create(
+            sreality_id=sreality_id,
+            defaults=defaults
+        )
+
+    inactive_count = Apartment.objects.exclude(sreality_id__in=current_active_ids).update(is_active=False)
+
+    print(f"Successfully synchronized!")
+    print(f"Actual apartments found/updated: {len(current_active_ids)}")
+    print(f"Deactivated: {inactive_count} apartments")
+
+
+apartments_list = fetch_all_rentals()
+
+# Saving the data into .csv for human analyzing
+res = apartments_list.copy().to_csv('appartments.csv', index=False)
+
+# Extracting the area from the listing name
 apartments_list['area_m2'] = apartments_list['name'].apply(extract_area)
+
+# Extracting the district (e.g. 1 - Prague 1)
 apartments_list['district'] = apartments_list['locality'].apply(extract_district)
 
+# Extracting the SEO locality slug (e.g. 'praha-hloubetin-podebradska')
+apartments_list['seo_locality'] = apartments_list['seo'].apply(lambda x: get_seo_locality(x))
+
+# Extracting the coords
 apartments_list['lat'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lat'))
 apartments_list['lon'] = apartments_list['gps'].apply(lambda x: extract_coords(x, 'lon'))
 
+# Initializing the array with the parameters used in ML-learning
 params = ['area_m2']
 
 all_labels_list = extract_all_labels(apartments_list["labelsAll"])
 
-print(all_labels_list)
-
+# The meaningful labels, used in ML-learning
 critical_labels = ['furnished', 'partly_furnished', 'not_furnished', 'metro', 'tram', 'new_building', 'after_reconstruction', 'brick', 'panel', 'elevator', 'cellar', 'garage', 'parking_lots']
 
+# One hot encoding of district
 districts = range(1,11)
-
 for distr in districts:
     column = "prague_" + str(distr)
     apartments_list[column] = apartments_list['locality'].apply(lambda x, lbl=str(distr): 1 if lbl in str(x) else 0)
@@ -179,17 +249,27 @@ for label in critical_labels:
     apartments_list[label] = apartments_list['labelsAll'].apply(lambda x, lbl=label: 1 if lbl in str(x) else 0)
     params.append(label)
 
+# Computing the distance to the local hub of the apartment's area
 apartments_list['distance_to_local_hub'] = apartments_list.apply(lambda x: get_distance_to_local_center(float(x['lat']), float(x['lon'])), axis=1)
-
-apartments_list = apartments_list.loc[apartments_list['price'] > 1]
-
 params.append('distance_to_local_hub')
+
 params.append('price')
+params.append('hash_id')
+params.append('district')
+params.append('seo_locality')
 
-ready_to_use_for_train = apartments_list[params].iloc[0:500]
+# Getting rid of the apartments with zero price
+apartments_list = apartments_list.loc[apartments_list['price'] > 1]
+apartments_list = apartments_list.loc[apartments_list['district'] != 0]
 
-to_predict = apartments_list[params].iloc[501:]
+sync_apartments_to_db(apartments_list[params])
 
-model_init(ready_to_use_for_train)
-testing_model(to_predict)
+# Model re-initialization block
+# params.remove('hash_id')
+# params.remove('district')
+# model_init(apartments_list[params])
+
+# Starting price computation
+run_ml_inference()
+
 
