@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ApartmentList from './pages/ApartmentList.jsx';
 import ApartmentPage from './pages/ApartmentPage.jsx';
 import './App.css';
+import Analytics from './pages/Analytics.jsx';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
         <Routes>
           <Route path="/" element={<ApartmentList />} />
           <Route path="/apartment/:id" element={<ApartmentPage />} />
+          <Route path="/analytics" element = {<Analytics/>}/>
         </Routes>
       </div>
     </Router>

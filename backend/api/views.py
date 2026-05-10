@@ -1,7 +1,8 @@
+import statistics
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import redirect
-from django.db.models import Q, Min, Max
+from django.db.models import Q, Min, Max, Avg, Count, F, ExpressionWrapper, FloatField
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from .models import Apartment
@@ -139,3 +140,38 @@ def get_filter_options(_):
             'max': apartments.aggregate(max_dist=Max('distance_to_local_hub'))['max_dist'],
         }
     })
+
+@api_view(['GET'])
+def get_analytics(request):
+    stats_query = Apartment.objects.filter(is_active=True).values('district').annotate(
+        total_apartments=Count('id'),
+        avg_price=Avg('price'),
+        min_price=Min('price'),
+        max_price=Max('price'),
+        
+        avg_price_per_m2=Avg(
+            ExpressionWrapper(F('price') * 1.0 / F('area_m2'), output_field=FloatField())
+        )
+    ).order_by('district')
+    
+    stats = list(stats_query)
+
+    prices_by_district = {}
+    
+    apartments = Apartment.objects.filter(is_active=True).values('district', 'price')
+    
+    for apt in apartments:
+        d = apt['district']
+        if d not in prices_by_district:
+            prices_by_district[d] = []
+        prices_by_district[d].append(apt['price'])
+
+    for stat in stats:
+        d = stat['district']
+        if d in prices_by_district and prices_by_district[d]:
+            stat['median_price'] = statistics.median(prices_by_district[d])
+        else:
+            stat['median_price'] = None
+
+
+    return Response(stats)

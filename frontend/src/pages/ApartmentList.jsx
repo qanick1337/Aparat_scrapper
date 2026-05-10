@@ -1,6 +1,8 @@
 import React, {useState, useEffect} from 'react';
+import { Link } from 'react-router-dom';
 import Api from "../Api.js";
 import ApartmentCard from "../components/ApartmentCard.jsx";
+import FilterPanel from "../components/FilterPanel.jsx";
 
 function ApartmentList() {
     const [apartments, setApartments] = useState([]);
@@ -12,11 +14,19 @@ function ApartmentList() {
     const [totalCount, setTotalCount] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
+    const [currentFilterUrl, setCurrentFilterUrl] = useState('apartments/');
 
     const getPageNumberFromUrl = (url) => {
         if (!url) return 1;
         const pageMatch = url.match(/[?&]page=(\d+)/);
         return pageMatch ? parseInt(pageMatch[1]) : 1;
+    };
+
+    const addPageToUrl = (baseUrl, page) => {
+        if (baseUrl.includes('?')) {
+            return `${baseUrl}&page=${page}`;
+        }
+        return `${baseUrl}?page=${page}`;
     };
 
     const getTotalPages = () => {
@@ -25,7 +35,7 @@ function ApartmentList() {
 
     const total = getTotalPages();
 
-    const getPageNumbers = () => {    
+    const getPageNumbers = () => {
         const current = currentPage;
         const range = 1;
         const pages = [];
@@ -47,7 +57,7 @@ function ApartmentList() {
             setNextUrl(response.data.next);
             setPrevUrl(response.data.previous);
             setTotalCount(response.data.count);
-            setCurrentPage(getPageNumberFromUrl(url ||response.data.next || response.data.previous ));
+            setCurrentPage(getPageNumberFromUrl(url || response.data.next || response.data.previous));
 
             setLoading(false);
             window.scrollTo(0, 0);
@@ -56,6 +66,16 @@ function ApartmentList() {
             setError("Unable to load the data.");
             setLoading(false);
         }
+    };
+
+    const handleFilterChange = (filterUrl) => {
+        setCurrentFilterUrl(filterUrl);
+        fetchApartments(filterUrl);
+    };
+
+    const handlePageChange = (page) => {
+        const newUrl = addPageToUrl(currentFilterUrl, page);
+        fetchApartments(newUrl);
     };
 
     useEffect(() => {
@@ -67,51 +87,55 @@ function ApartmentList() {
     }
 
     return (
-        <div className="apartment-list-container">
-            <h1>Real Estate Analytics (Prague)</h1>
-            <p>Total found: {totalCount} offers</p>
+        <div className="apartment-list-wrapper">
+            <FilterPanel onFilterChange={handleFilterChange} />
 
-            {loading ? (
-                <div className="apartment-list-loading">Loading...</div>
-            ) : (
-                <>
-                    <div className="apartment-list-cards">
-                        {apartments.map((apt) => (
-                            <ApartmentCard key={apt.id} apartment={apt}/>
-                        ))}
-                    </div>
+            <div className="apartment-list-container">
+                <h1>Real Estate Analytics (Prague)</h1>
+                <p>Total found: {totalCount} offers &nbsp;|&nbsp; <Link to="/analytics">View Analytics</Link></p>
 
-                    <div className="apartment-list-pagination">
-                        <button
-                            onClick={() => fetchApartments(`apartments/?page=1`)}
-                            disabled={currentPage == 1}
-                            className="pagination-btn"
-                        >
-                            ← On the start
-                        </button>
-
-                        <div className="pagination-numbers">
-                            {getPageNumbers().map((page) => (
-                                <button
-                                    key={page}
-                                    onClick={() => fetchApartments(`apartments/?page=${page}`)}
-                                    className={`pagination-number ${page === currentPage ? 'active' : ''}`}
-                                >
-                                    {page}
-                                </button>
+                {loading ? (
+                    <div className="apartment-list-loading">Loading...</div>
+                ) : (
+                    <>
+                        <div className="apartment-list-cards">
+                            {apartments.map((apt) => (
+                                <ApartmentCard key={apt.id} apartment={apt}/>
                             ))}
                         </div>
 
-                        <button
-                            onClick={() => fetchApartments(`apartments/?page=${total}`)}
-                            disabled={currentPage == total}
-                            className="pagination-btn"
-                        >
-                            On the last page →
-                        </button>
-                    </div>
-                </>
-            )}
+                        <div className="apartment-list-pagination">
+                            <button
+                                onClick={() => handlePageChange(1)}
+                                disabled={currentPage === 1}
+                                className="pagination-btn"
+                            >
+                                ← On the start
+                            </button>
+
+                            <div className="pagination-numbers">
+                                {getPageNumbers().map((page) => (
+                                    <button
+                                        key={page}
+                                        onClick={() => handlePageChange(page)}
+                                        className={`pagination-number ${page === currentPage ? 'active' : ''}`}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => handlePageChange(total)}
+                                disabled={currentPage === total}
+                                className="pagination-btn"
+                            >
+                                On the last page →
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
     );
 }
