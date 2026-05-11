@@ -265,9 +265,10 @@ apartments_list = apartments_list.loc[apartments_list['district'] != 0]
 sync_apartments_to_db(apartments_list[params])
 
 # Model re-initialization block
-# params.remove('hash_id')
-# params.remove('district')
-# model_init(apartments_list[params])
+params.remove('hash_id')
+params.remove('district')
+params.remove('seo_locality')
+model_init(apartments_list[params])
 
 # Starting price computation
 run_ml_inference()

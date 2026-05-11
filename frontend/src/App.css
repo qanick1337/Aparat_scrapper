@@ -444,6 +444,9 @@
 
 /* ApartmentPage Component Styles */
 .apartment-page-container {
+  max-width: 1600px;
+  padding: 20px;
+  margin: 0 auto;
   margin-top: 20px;
   display: flex;
   flex-direction: column;
